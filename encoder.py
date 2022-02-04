@@ -27,19 +27,15 @@ class AutoEncoder(nn.Module):
         self.encode = nn.Sequential(
                         nn.Conv2d(in_channels=1, out_channels=16, kernel_size=5, padding=2),
                         nn.BatchNorm2d(16),
-                        nn.ReLU(),
                         nn.MaxPool2d(2),
                         nn.Conv2d(in_channels=16, out_channels=32, kernel_size=5, padding=2),
                         nn.BatchNorm2d(32),
-                        nn.ReLU(),
                         nn.MaxPool2d(2),
                         nn.Conv2d(in_channels=32, out_channels=64, kernel_size=5, padding=2),
                         nn.BatchNorm2d(64),
-                        nn.ReLU(),
                         nn.MaxPool2d(2),
                         nn.Conv2d(in_channels=64, out_channels=128, kernel_size=5, padding=2),
                         nn.BatchNorm2d(128),
-                        nn.ReLU(),
                         nn.MaxPool2d(2)
                     )
         #4, 512, 6, 16
@@ -47,30 +43,27 @@ class AutoEncoder(nn.Module):
                         nn.Upsample(scale_factor=2),
                         nn.ConvTranspose2d(in_channels=128, out_channels=64, kernel_size=5, padding=2),
                         nn.BatchNorm2d(64),
-                        nn.ReLU(),
                         nn.Upsample(scale_factor=2),
                         nn.ConvTranspose2d(in_channels=64, out_channels=32, kernel_size=5, padding=2),
                         nn.BatchNorm2d(32),
-                        nn.ReLU(),
                         nn.Upsample(scale_factor=2),
                         nn.ConvTranspose2d(in_channels=32, out_channels=16, kernel_size=5, padding=2),
                         nn.BatchNorm2d(16),
-                        nn.ReLU(),
                         nn.Upsample(scale_factor=2),
                         nn.ConvTranspose2d(in_channels=16, out_channels=1, kernel_size=5, padding=2),
                         nn.BatchNorm2d(1),
-                        nn.ReLU()
                     )
         self.linear1 = nn.Linear(128*10*20, 5000)
         self.linear2 = nn.Linear(5000, 128*10*20)
-
+        self.relu = nn.ReLU()
+        
     def forward(self, x):
         x = self.encode(x)
         B, C, W, H = x.shape
         x = torch.reshape(x, (B, C*W*H))
-        x = self.linear1(x)
+        x = self.relu(self.linear1(x))
         # print(f"Encoded shape: {x.shape}")
-        x = self.linear2(x)
+        x = self.relu(self.linear2(x))
         x = torch.reshape(x, (B, C, W, H))
         x = self.decode(x)
         return x
