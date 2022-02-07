@@ -1,1 +1,3 @@
 patches.npy
+*.pth
+__pycache__

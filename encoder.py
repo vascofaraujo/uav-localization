@@ -21,7 +21,7 @@ class SeixalImage(Dataset):
         patches =  torch.from_numpy(patches[patch_index, :, :])
         return patches[None, :, :]
 
-class AutoEncoder(nn.Module):
+class Encoder(nn.Module):
     def __init__(self):
         super().__init__()
         self.encode = nn.Sequential(
@@ -36,10 +36,31 @@ class AutoEncoder(nn.Module):
                         nn.MaxPool2d(2),
                         nn.Conv2d(in_channels=64, out_channels=128, kernel_size=5, padding=2),
                         nn.BatchNorm2d(128),
+                        nn.MaxPool2d(2),
+                        nn.Conv2d(in_channels=128, out_channels=256, kernel_size=5, padding=2),
+                        nn.BatchNorm2d(256),
                         nn.MaxPool2d(2)
                     )
-        #4, 512, 6, 16
+
+        self.linear1 = nn.Linear(256*5*10, 5000)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.encode(x)
+        B, C, W, H = x.shape
+        x = torch.reshape(x, (B, C*W*H))
+        x = self.relu(self.linear1(x))
+        # print(f"Encoded shape: {x.shape}")
+        return x, [B,C,W,H]
+
+class Decoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+
         self.decode = nn.Sequential(
+                        nn.Upsample(scale_factor=2),
+                        nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=5, padding=2),
+                        nn.BatchNorm2d(128),
                         nn.Upsample(scale_factor=2),
                         nn.ConvTranspose2d(in_channels=128, out_channels=64, kernel_size=5, padding=2),
                         nn.BatchNorm2d(64),
@@ -51,22 +72,18 @@ class AutoEncoder(nn.Module):
                         nn.BatchNorm2d(16),
                         nn.Upsample(scale_factor=2),
                         nn.ConvTranspose2d(in_channels=16, out_channels=1, kernel_size=5, padding=2),
-                        nn.BatchNorm2d(1),
+                        nn.BatchNorm2d(1)
                     )
-        self.linear1 = nn.Linear(128*10*20, 5000)
-        self.linear2 = nn.Linear(5000, 128*10*20)
+        self.linear2 = nn.Linear(5000, 256*5*10)
         self.relu = nn.ReLU()
-        
-    def forward(self, x):
-        x = self.encode(x)
-        B, C, W, H = x.shape
-        x = torch.reshape(x, (B, C*W*H))
-        x = self.relu(self.linear1(x))
-        # print(f"Encoded shape: {x.shape}")
+
+    def forward(self, x, encoder_shape):
+        B,C,W,H = encoder_shape
         x = self.relu(self.linear2(x))
         x = torch.reshape(x, (B, C, W, H))
         x = self.decode(x)
         return x
+
 
 def show_images(output, img):
     fig = plt.figure(figsize=(8,8))
@@ -76,36 +93,51 @@ def show_images(output, img):
     plt.imshow(img[0,0,:,:])
     plt.show()
 
-def train_model(model, train_dataloader):
+def train_model(encoder, decoder, train_dataloader):
     criterion = nn.MSELoss(reduction='mean')
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr=0.001, momentum=0.9)
+    decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr=0.001, momentum=0.9)
 
-    epochs = 20
-    best_loss = 0.2
+    epochs = 100
+    with open('best-loss.txt', 'r') as f:
+        best_loss = float(f.readline())
     epoch_loss = []
     for epoch in tqdm(range(epochs)):
         train_loss = []
         for img in train_dataloader:
-            optimizer.zero_grad()
-            output = model(img.float())
+            encoder_optimizer.zero_grad()
+            decoder_optimizer.zero_grad()
+
+            encoded, encoded_shape = encoder(img.float())
+            output = decoder(encoded, encoded_shape)
 
             loss = criterion(output , img.float())
             # print(loss)
             loss.backward()
-            optimizer.step()
+            encoder_optimizer.step()
+            decoder_optimizer.step()
             train_loss.append(loss.item())
 
         curr_epoch_loss = np.mean(train_loss)
         print(f"Epoch loss: {curr_epoch_loss}")
         if curr_epoch_loss < best_loss:
-            torch.save(model, "AutoEncoder.pth")
+            torch.save(encoder, "Encoder.pth")
             best_loss = curr_epoch_loss
+
+    return best_loss
 
 if __name__ == '__main__':
 
     train_dataset = SeixalImage()
     train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
 
-    model = AutoEncoder()
+    encoder = Encoder()
+    decoder = Decoder()
 
-    _ = train_model(model, train_dataloader)
+    best_loss = train_model(encoder, decoder, train_dataloader)
+
+    with open('best-loss.txt', 'r+') as f:
+        old_best_loss = float(f.readline())
+        if best_loss < old_best_loss:
+            f.truncate(0) #delete old best loss
+            f.write(str(best_loss))
