@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
@@ -93,7 +94,7 @@ def show_images(output, img):
     plt.imshow(img[0,0,:,:])
     plt.show()
 
-def train_model(encoder, decoder, train_dataloader):
+def train_model(encoder, decoder, train_dataloader, test_dataloader):
     criterion = nn.MSELoss(reduction='mean')
     encoder_optimizer = torch.optim.SGD(encoder.parameters(), lr=0.001, momentum=0.9)
     decoder_optimizer = torch.optim.SGD(decoder.parameters(), lr=0.001, momentum=0.9)
@@ -104,6 +105,8 @@ def train_model(encoder, decoder, train_dataloader):
     epoch_loss = []
     for epoch in tqdm(range(epochs)):
         train_loss = []
+        encoder.train()
+        decoder.train()
         for img in train_dataloader:
             encoder_optimizer.zero_grad()
             decoder_optimizer.zero_grad()
@@ -116,11 +119,27 @@ def train_model(encoder, decoder, train_dataloader):
             loss.backward()
             encoder_optimizer.step()
             decoder_optimizer.step()
+
             train_loss.append(loss.item())
 
-        curr_epoch_loss = np.mean(train_loss)
-        print(f"Epoch loss: {curr_epoch_loss}")
-        if curr_epoch_loss < best_loss:
+        curr_train_loss = np.mean(train_loss)
+        print(f"Train epoch loss: {curr_train_loss}")
+
+        encoder.eval()
+        decoder.train()
+        test_loss = []
+        for img in test_dataloader:
+            with torch.no_grad():
+                encoded, encoded_shape = encoder(img.float())
+                output = decoder(encoded, encoded_shape)
+
+                loss = criterion(output , img.float())
+
+                test_loss.append(loss)
+
+        curr_test_loss = np.mean(test_loss)
+        print(f"Test epoch loss: {curr_test_loss}")
+        if curr_test_loss < best_loss:
             torch.save(encoder, "Encoder.pth")
             best_loss = curr_epoch_loss
 
@@ -128,13 +147,15 @@ def train_model(encoder, decoder, train_dataloader):
 
 if __name__ == '__main__':
 
-    train_dataset = SeixalImage()
+    dataset = SeixalImage()
+    train_dataset, test_dataset = train_test_split(dataset, test_size=0.3, train_size=0.7)
     train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=True)
 
     encoder = Encoder()
     decoder = Decoder()
 
-    best_loss = train_model(encoder, decoder, train_dataloader)
+    best_loss = train_model(encoder, decoder, train_dataloader, test_dataloader)
 
     with open('best-loss.txt', 'r+') as f:
         old_best_loss = float(f.readline())
