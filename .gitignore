@@ -1,4 +1,4 @@
-patches.npy
+*.npy
 *.pth
 __pycache__
-video.h264
+*.h264

@@ -11,7 +11,7 @@ def rgb2gray(rgb):
     return np.dot(rgb[...,:3], [0.2989, 0.5870, 0.1140])
 
 def crop_image(img):
-    crop_x, crop_y = 160, 320
+    crop_x, crop_y = 40, 80
     h, w = img.shape
 
     n_h, n_w = h//crop_x, w//crop_y
@@ -31,6 +31,6 @@ if __name__ == '__main__':
 
     patches = crop_image(img)
 
-    np.save('patches', patches)
+    np.save('patches-small', patches)
 
     print(patches.shape)
